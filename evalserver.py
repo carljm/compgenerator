@@ -1,9 +1,22 @@
+"""
+
+A simple server that accepts Python code and exec()s it.
+
+Obviously this is unsafe. Run it only with code you trust not to
+do anything malicious. This is designed to work together with
+test_fuzz_comps.py.
+
+"""
 import argparse
 from dataclasses import dataclass, field
 import json
 import re
 from socket import socket, AF_INET, SOCK_STREAM
 import traceback
+
+
+def deaddress(text: str) -> str:
+    return re.sub(r"0x[0-9a-f]+", "0x...", text)
 
 
 def try_eval(data: bytes) -> dict[str, str | dict[str, str]]:
@@ -25,9 +38,8 @@ def try_eval(data: bytes) -> dict[str, str | dict[str, str]]:
     for k, v in ns.items():
         if isinstance(v, type):
             classdict = repr(v.__dict__)
-            classdict = re.sub(r"0x[0-9a-f]+", "0x...", classdict)
-            classdicts[k] = classdict
-    return {"result": repr(ns), "classdicts": classdicts}
+            classdicts[k] = deaddress(classdict)
+    return {"result": deaddress(repr(ns)), "classdicts": classdicts}
 
 
 @dataclass
