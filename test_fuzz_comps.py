@@ -6,7 +6,9 @@ import tempfile
 import textwrap
 from astor import to_source  # type: ignore
 from pathlib import Path
+import time
 
+import evalserver
 from hypothesis import given, settings, strategies as st, target, HealthCheck
 
 
@@ -20,19 +22,35 @@ def logfile(request):
         yield None
 
 
+@pytest.fixture(scope="module")
+def evalserver_client(request, logfile):
+    port = request.config.getoption("--port") or 9999
+    python = request.config.getoption("--python") or sys.executable
+    proc = subprocess.Popen(
+        [python, evalserver.__file__, "-p", str(port)], stdout=logfile, stderr=logfile
+    )
+    time.sleep(1)
+    with evalserver.EvalServerClient(port) as client:
+        yield client
+
+
 def record_targets(tree: ast.Module) -> ast.Module:
     nodes = list(ast.walk(tree))
     num_lambdas = 0
     num_listcomps = 0
+    num_classes = 0
     for n in nodes:
         if isinstance(n, ast.Lambda):
             num_lambdas += 1
         elif isinstance(n, ast.ListComp):
             num_listcomps += 1
+        elif isinstance(n, ast.ClassDef):
+            num_classes += 100
     # hypothesis will aim for samples that maximize these metrics
     for value, label in [
         (num_lambdas, "(modules) number of lambdas"),
         (num_listcomps, "(modules) number of listcomps"),
+        (num_classes, "(modules) number of classes"),
     ]:
         target(float(value), label=label)
     return to_source(tree)
@@ -46,7 +64,7 @@ def compilable(tree: ast.Module) -> bool:
     codestr = to_source(tree)
     try:
         compile(codestr, "<string>", "exec")
-    except Exception as e:
+    except Exception:
         return False
     return True
 
@@ -55,10 +73,10 @@ def identifiers():
     return st.one_of(
         st.just("a"),
         st.just("b"),
-        st.just("c"),
-        st.just("x"),
-        st.just("y"),
-        st.just("z"),
+        # st.just("c"),
+        # st.just("x"),
+        # st.just("y"),
+        # st.just("z"),
     )
 
 
@@ -236,8 +254,8 @@ st.register_type_strategy(ast.FunctionDef, functions())
 
 def module_level_statements():
     return st.one_of(
-        st.from_type(ast.Assign),
-        st.from_type(ast.FunctionDef),
+        # st.from_type(ast.Assign),
+        # st.from_type(ast.FunctionDef),
         st.from_type(ast.ClassDef),
     )
 
@@ -259,14 +277,17 @@ def modules():
 
 @given(modules())
 @settings(
-    max_examples=100,
+    max_examples=100_000,
+    deadline=None,
     suppress_health_check=[HealthCheck.too_slow, HealthCheck.filter_too_much],
 )
-def test_comprehension(request, logfile, codestr):
+def test_comprehension(
+    request, logfile, evalserver_client: evalserver.EvalServerClient, codestr: str
+):
     if logfile:
         logfile.write(codestr)
         logfile.write("\n")
         logfile.flush()
-    python = request.config.getoption("--python") or sys.executable
-    cmd = [python, "-c", "compile('codestr', '<string>', 'exec')"]
-    subprocess.check_call(cmd)
+    my_result = evalserver.try_eval(codestr.encode())
+    remote_result = evalserver_client.submit_code(codestr)
+    assert my_result == remote_result

@@ -11,3 +11,9 @@ def pytest_addoption(parser):
         default="",
         help="path to logfile for valid samples",
     )
+    parser.addoption(
+        "--port",
+        action="store",
+        default="",
+        help="port to use for evalserver",
+    )
