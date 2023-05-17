@@ -30,8 +30,12 @@ def evalserver_client(request, logfile):
         [python, evalserver.__file__, "-p", str(port)], stdout=logfile, stderr=logfile
     )
     time.sleep(1)
-    with evalserver.EvalServerClient(port) as client:
-        yield client
+    try:
+        with evalserver.EvalServerClient(port) as client:
+            yield client
+    finally:
+        proc.terminate()
+        proc.wait()
 
 
 def record_targets(tree: ast.Module) -> ast.Module:

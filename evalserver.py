@@ -1,11 +1,12 @@
 import argparse
 from dataclasses import dataclass, field
 import json
+import re
 from socket import socket, AF_INET, SOCK_STREAM
 import traceback
 
 
-def try_eval(data: bytes) -> dict[str, str]:
+def try_eval(data: bytes) -> dict[str, str | dict[str, str]]:
     try:
         data_str = data.decode("utf-8")
     except UnicodeDecodeError:
@@ -20,7 +21,13 @@ def try_eval(data: bytes) -> dict[str, str]:
         del ns["__builtins__"]
     except Exception as e:
         return {"error": "Exception", "message": repr(e)}
-    return {"result": repr(ns)}
+    classdicts = {}
+    for k, v in ns.items():
+        if isinstance(v, type):
+            classdict = repr(v.__dict__)
+            classdict = re.sub(r"0x[0-9a-f]+", "0x...", classdict)
+            classdicts[k] = classdict
+    return {"result": repr(ns), "classdicts": classdicts}
 
 
 @dataclass
