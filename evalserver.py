@@ -13,13 +13,32 @@ import json
 import re
 from socket import socket, AF_INET, SOCK_STREAM
 import traceback
+import types
+from typing import Any, Mapping
 
 
 def deaddress(text: str) -> str:
     return re.sub(r"0x[0-9a-f]+", "0x...", text)
 
 
-def try_exec(data: bytes) -> dict[str, str | dict[str, str]]:
+def get_ns(ns: Mapping[str, Any]) -> dict[str, Any]:
+    ret = {}
+    for k, v in ns.items():
+        child_ns = None
+        if isinstance(v, type):
+            child_ns = v.__dict__
+        elif isinstance(v, types.FunctionType):
+            child_ns = v()
+        child: Any
+        if child_ns is not None:
+            child = get_ns(child_ns)
+        else:
+            child = deaddress(repr(v))
+        ret[k] = child
+    return ret
+
+
+def try_exec(data: bytes) -> dict[str, Any]:
     try:
         data_str = data.decode("utf-8")
     except UnicodeDecodeError:
@@ -29,17 +48,12 @@ def try_exec(data: bytes) -> dict[str, str | dict[str, str]]:
     except Exception as e:
         return {"error": "compile", "message": repr(e)}
     try:
-        ns = {}
+        ns: dict[str, Any] = {}
         exec(code, ns, ns)
         del ns["__builtins__"]
     except Exception as e:
         return {"error": "run", "message": repr(e)}
-    classdicts = {}
-    for k, v in ns.items():
-        if isinstance(v, type):
-            classdict = repr(v.__dict__)
-            classdicts[k] = deaddress(classdict)
-    return {"result": deaddress(repr(ns)), "classdicts": classdicts}
+    return get_ns(ns)
 
 
 @dataclass

@@ -236,6 +236,7 @@ def statements():
         st.from_type(ast.Global),
         st.from_type(ast.Expr),
         st.from_type(ast.FunctionDef),
+        st.from_type(ast.Name),
         classes(),
     )
 
@@ -255,7 +256,8 @@ def functions(draw):
     name = draw(identifiers())
     arg_names = draw(st.sets(identifiers(), min_size=0, max_size=3))
     args = ast.arguments(args=[ast.arg(name) for name in arg_names], defaults=[])
-    stmts = draw(st.lists(statements(), min_size=1, max_size=10))
+    stmts = draw(st.lists(statements(), min_size=1, max_size=5))
+    stmts += [ast.Return(ast.Call(ast.Name("locals"), [], []))]
     return ast.FunctionDef(name, args, stmts, [])
 
 
@@ -265,10 +267,7 @@ st.register_type_strategy(ast.FunctionDef, functions())
 def module_level_statements():
     # require top-level class or function; plain module-level comprehensions are
     # not very interesting in terms of finding scoping bugs
-    return st.one_of(
-        st.from_type(ast.ClassDef),
-        st.from_type(ast.FunctionDef)
-    )
+    return st.one_of(st.from_type(ast.ClassDef), st.from_type(ast.FunctionDef))
 
 
 st.register_type_strategy(
