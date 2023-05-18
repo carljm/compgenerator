@@ -24,11 +24,14 @@ def deaddress(text: str) -> str:
 def get_ns(ns: Mapping[str, Any]) -> dict[str, Any]:
     ret = {}
     for k, v in ns.items():
-        child_ns = None
+        child_ns: Mapping[str, Any] | None = None
         if isinstance(v, type):
             child_ns = v.__dict__
         elif isinstance(v, types.FunctionType):
-            child_ns = v()
+            try:
+                child_ns = v()
+            except Exception as e:
+                child_ns = {"error": "run", "message": repr(e)}
         child: Any
         if child_ns is not None:
             child = get_ns(child_ns)
