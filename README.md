@@ -1,18 +1,17 @@
 Comprehension fuzzer
 ====================
 
-Generate random code samples including list comprehensions and try compiling
-them against a Python build.
+Generate random code samples including list comprehensions and try running
+them on a Python build.
 
 To use, create a Python 3.11 venv and `pip install -r frozen.txt`.
 
+Then start the evalserver with your built Python:
+
+    /home/carljm/cpython-builds/dbg/python evalserver.py
+
 Then run `pytest`.
 
-By default this will generate samples valid on Python 3.11 and then test them
-on 3.11; not very useful. Instead, point it to a 3.12 build:
-
-    pytest --python="/home/carljm/cpython-builds/dbg/python"
-    
 Two other useful options: `--hypothesis-show-statistics` and
 `--logfile="/some/path"`; the latter will dump all valid generated samples to
 the log file.
@@ -24,7 +23,7 @@ generated without listcomps and then rejected. We probably need a more
 constrained format for generating the samples initially, but without
 over-constraining and possibly missing counter-examples.
 
-It would be ideal to run samples and validate output, not just test compiling
-them, but this will definitely require much more constrained samples; currently
-most samples are not runnable at all, and there's no structured output to
-validate.
+Note that this will `exec()` the generated code samples on multiple
+Python binaries. As the code samples cannot contain imports or calls
+to builtin functions, this is probably safe, but definitely do not
+run the evalserver on a publicly accessible port.

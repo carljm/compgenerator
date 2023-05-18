@@ -17,3 +17,10 @@ def pytest_addoption(parser):
         default="",
         help="port to use for evalserver",
     )
+    parser.addoption(
+        "--run-evalserver",
+        action="store_true",
+        default=False,
+        help="run evalserver from the test; if not set, "
+        "evalserver must be started separately",
+    )

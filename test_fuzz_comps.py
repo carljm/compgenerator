@@ -1,11 +1,9 @@
 import ast
+from typing import IO
 import pytest
 import subprocess
 import sys
-import tempfile
-import textwrap
 from astor import to_source  # type: ignore
-from pathlib import Path
 import time
 
 import evalserver
@@ -26,16 +24,24 @@ def logfile(request):
 def evalserver_client(request, logfile):
     port = request.config.getoption("--port") or 9999
     python = request.config.getoption("--python") or sys.executable
-    proc = subprocess.Popen(
-        [python, evalserver.__file__, "-p", str(port)], stdout=logfile, stderr=logfile
-    )
-    time.sleep(1)
+    run_evalserver = request.config.getoption("--run-evalserver")
+
+    if run_evalserver:
+        proc = subprocess.Popen(
+            [python, evalserver.__file__, "-p", str(port)],
+            stdout=logfile,
+            stderr=logfile,
+        )
+        time.sleep(1)
+    else:
+        proc = None
     try:
         with evalserver.EvalServerClient(port) as client:
             yield client
     finally:
-        proc.terminate()
-        proc.wait()
+        if proc is not None:
+            proc.terminate()
+            proc.wait()
 
 
 def record_targets(tree: ast.Module) -> ast.Module:
@@ -77,10 +83,6 @@ def identifiers():
     return st.one_of(
         st.just("a"),
         st.just("b"),
-        # st.just("c"),
-        # st.just("x"),
-        # st.just("y"),
-        # st.just("z"),
     )
 
 
@@ -257,11 +259,7 @@ st.register_type_strategy(ast.FunctionDef, functions())
 
 
 def module_level_statements():
-    return st.one_of(
-        # st.from_type(ast.Assign),
-        # st.from_type(ast.FunctionDef),
-        st.from_type(ast.ClassDef),
-    )
+    return st.from_type(ast.ClassDef)
 
 
 st.register_type_strategy(
@@ -286,12 +284,12 @@ def modules():
     suppress_health_check=[HealthCheck.too_slow, HealthCheck.filter_too_much],
 )
 def test_comprehension(
-    request, logfile, evalserver_client: evalserver.EvalServerClient, codestr: str
+    logfile: IO[str], evalserver_client: evalserver.EvalServerClient, codestr: str
 ):
     if logfile:
         logfile.write(codestr)
         logfile.write("\n")
         logfile.flush()
-    my_result = evalserver.try_eval(codestr.encode())
+    my_result = evalserver.try_exec(codestr.encode())
     remote_result = evalserver_client.submit_code(codestr)
     assert my_result == remote_result

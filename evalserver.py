@@ -19,7 +19,7 @@ def deaddress(text: str) -> str:
     return re.sub(r"0x[0-9a-f]+", "0x...", text)
 
 
-def try_eval(data: bytes) -> dict[str, str | dict[str, str]]:
+def try_exec(data: bytes) -> dict[str, str | dict[str, str]]:
     try:
         data_str = data.decode("utf-8")
     except UnicodeDecodeError:
@@ -78,7 +78,7 @@ def handle_request(sock: socket) -> None:
     data_size = int.from_bytes(header, byteorder="big")
     data = sock.recv(data_size)
     print("Got code", data)
-    result = try_eval(data)
+    result = try_exec(data)
     print("Got result", result)
     output = json.dumps(result).encode("utf-8")
     output_size = len(output)
@@ -92,11 +92,15 @@ def main():
     args = parser.parse_args()
 
     sock = make_server(args.port)
-    while True:
-        conn, _ = sock.accept()
-        with conn:
-            while True:
-                handle_request(conn)
+    print("evalserver.py listening on port", args.port)
+    try:
+        while True:
+            conn, _ = sock.accept()
+            with conn:
+                while True:
+                    handle_request(conn)
+    finally:
+        sock.close()
 
 
 if __name__ == "__main__":
