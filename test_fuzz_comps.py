@@ -49,18 +49,22 @@ def record_targets(tree: ast.Module) -> ast.Module:
     num_lambdas = 0
     num_listcomps = 0
     num_classes = 0
+    num_functions = 0
     for n in nodes:
         if isinstance(n, ast.Lambda):
             num_lambdas += 1
         elif isinstance(n, ast.ListComp):
             num_listcomps += 1
         elif isinstance(n, ast.ClassDef):
-            num_classes += 100
+            num_classes += 1
+        elif isinstance(n, ast.FunctionDef):
+            num_functions += 1
     # hypothesis will aim for samples that maximize these metrics
     for value, label in [
         (num_lambdas, "(modules) number of lambdas"),
         (num_listcomps, "(modules) number of listcomps"),
         (num_classes, "(modules) number of classes"),
+        (num_functions, "(modules) number of functions"),
     ]:
         target(float(value), label=label)
     return to_source(tree)
@@ -259,7 +263,12 @@ st.register_type_strategy(ast.FunctionDef, functions())
 
 
 def module_level_statements():
-    return st.from_type(ast.ClassDef)
+    # require top-level class or function; plain module-level comprehensions are
+    # not very interesting in terms of finding scoping bugs
+    return st.one_of(
+        st.from_type(ast.ClassDef),
+        st.from_type(ast.FunctionDef)
+    )
 
 
 st.register_type_strategy(

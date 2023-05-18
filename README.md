@@ -6,7 +6,8 @@ them on a Python build.
 
 To use, create a Python 3.11 venv and `pip install -r frozen.txt`.
 
-Then start the evalserver with your built Python:
+Then start the evalserver with the build of Python you want to test for
+compatibility with 3.11:
 
     /home/carljm/cpython-builds/dbg/python evalserver.py
 
@@ -18,8 +19,8 @@ the log file.
 
 Current approach is to generate a bunch of random code samples and filter down
 to the ones containing list comprehensions, then aim for samples that maximize
-number of listcomps and lambdas. The problem is that too many samples are
-generated without listcomps and then rejected. We probably need a more
+number of listcomps, lambdas, and classes. The problem is that too many samples
+are generated without listcomps and then rejected. We probably need a more
 constrained format for generating the samples initially, but without
 over-constraining and possibly missing counter-examples.
 
