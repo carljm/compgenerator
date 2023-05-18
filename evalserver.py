@@ -26,14 +26,14 @@ def try_exec(data: bytes) -> dict[str, str | dict[str, str]]:
         return {"error": "UnicodeDecodeError"}
     try:
         code = compile(data_str, "<string>", "exec")
-    except SyntaxError as e:
-        return {"error": "SyntaxError", "message": repr(e)}
+    except Exception as e:
+        return {"error": "compile", "message": repr(e)}
     try:
         ns = {}
         exec(code, ns, ns)
         del ns["__builtins__"]
     except Exception as e:
-        return {"error": "Exception", "message": repr(e)}
+        return {"error": "run", "message": repr(e)}
     classdicts = {}
     for k, v in ns.items():
         if isinstance(v, type):
