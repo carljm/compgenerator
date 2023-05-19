@@ -9,6 +9,7 @@ test_fuzz_comps.py.
 """
 import argparse
 from dataclasses import dataclass, field
+import inspect
 import json
 import re
 from socket import socket, AF_INET, SOCK_STREAM
@@ -16,25 +17,56 @@ import traceback
 import types
 from typing import Any, Mapping
 
+MAX_DEPTH = 5
+
 
 def deaddress(text: str) -> str:
-    return re.sub(r"0x[0-9a-f]+", "0x...", text)
+    text = re.sub(r"0x[0-9a-f]+", "0x...", text)
+    text = text.replace(".<listcomp>", "")
+    return text
 
 
-def get_ns(ns: Mapping[str, Any]) -> dict[str, Any]:
+def exception_repr(e: Exception) -> str:
+    # There is a harmless difference between 3.11 and main in these error messages.
+    # See https://github.com/carljm/compgenerator/issues/4
+    if isinstance(e, UnboundLocalError) and (
+        match := re.fullmatch(
+            r"cannot access local variable '([a-z_]+)' where it is not associated with a value",
+            e.args[0],
+        )
+    ):
+        return f"Name/UnboundLocal: {match.group(1)}"
+    elif isinstance(e, NameError) and (
+        match := re.fullmatch(
+            r"cannot access free variable '([a-z_]+)' where it is not associated with a value in enclosing scope",
+            e.args[0],
+        )
+    ):
+        return f"Name/UnboundLocal: {match.group(1)}"
+    return repr(e)
+
+
+def get_ns(ns: Mapping[str, Any], depth: int) -> dict[str, Any]:
+    if depth >= MAX_DEPTH:
+        return {k: deaddress(repr(v)) for k, v in ns.items()}
     ret = {}
-    for k, v in ns.items():
-        child_ns: Mapping[str, Any] | None = None
+    # Make a copy because calling the inner functions may mutate
+    # an outer namespace.
+    for k, v in list(ns.items()):
+        child_ns: Any = None
         if isinstance(v, type):
             child_ns = v.__dict__
         elif isinstance(v, types.FunctionType):
+            sig = inspect.signature(v)
+            # Assume all the parameters are positional
+            args = [f"arg{i}" for i in range(len(sig.parameters))]
             try:
-                child_ns = v()
+                child_ns = v(*args)
             except Exception as e:
-                child_ns = {"error": "run", "message": repr(e)}
+                child_ns = {"error": "run", "message": exception_repr(e)}
         child: Any
-        if child_ns is not None:
-            child = get_ns(child_ns)
+        if child_ns is not None and isinstance(child_ns, Mapping):
+            child = get_ns(child_ns, depth=depth + 1)
         else:
             child = deaddress(repr(v))
         ret[k] = child
@@ -49,14 +81,14 @@ def try_exec(data: bytes) -> dict[str, Any]:
     try:
         code = compile(data_str, "<string>", "exec")
     except Exception as e:
-        return {"error": "compile", "message": repr(e)}
+        return {"error": "compile", "message": exception_repr(e)}
     try:
         ns: dict[str, Any] = {}
         exec(code, ns, ns)
         del ns["__builtins__"]
     except Exception as e:
-        return {"error": "run", "message": repr(e)}
-    return get_ns(ns)
+        return {"error": "run", "message": exception_repr(e)}
+    return get_ns(ns, depth=0)
 
 
 @dataclass
