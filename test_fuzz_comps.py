@@ -85,8 +85,8 @@ def compilable(tree: ast.Module) -> bool:
 
 def identifiers():
     return st.one_of(
-        st.just("a"),
-        st.just("b"),
+        st.just("__a"),
+        st.just("__b"),
     )
 
 
@@ -121,6 +121,15 @@ st.register_type_strategy(
 def target_expr():
     return st.one_of(
         st.from_type(ast.Name),
+        st.from_type(ast.Subscript),
+    )
+
+
+def subscript_value_expr():
+    return st.one_of(
+        st.from_type(ast.Name),
+        listcomps(),
+        st.from_type(ast.Lambda),
         st.from_type(ast.Subscript),
     )
 
@@ -161,7 +170,7 @@ st.register_type_strategy(ast.NamedExpr, namedexprs())
 
 @st.composite
 def subscripts(draw):
-    value = draw(value_expr())
+    value = draw(subscript_value_expr())
     index = draw(value_expr())
     return ast.Subscript(value, index)
 
@@ -254,7 +263,7 @@ st.register_type_strategy(ast.ClassDef, classes())
 @st.composite
 def functions(draw):
     name = draw(identifiers())
-    arg_names = draw(st.sets(identifiers(), min_size=0, max_size=3))
+    arg_names = draw(st.sets(identifiers(), min_size=0, max_size=2))
     args = ast.arguments(args=[ast.arg(name) for name in arg_names], defaults=[])
     stmts = draw(st.lists(statements(), min_size=1, max_size=5))
     stmts += [ast.Return(ast.Call(ast.Name("locals"), [], []))]
