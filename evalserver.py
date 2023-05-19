@@ -21,7 +21,10 @@ MAX_DEPTH = 5
 
 
 def deaddress(text: str) -> str:
+    # repr() of some types includes the memory address
     text = re.sub(r"0x[0-9a-f]+", "0x...", text)
+    # lambdas defined within listcomps lose the <listcomp> part of their qualname,
+    # we don't care
     text = text.replace(".<listcomp>", "")
     return text
 
