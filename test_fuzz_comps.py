@@ -85,8 +85,8 @@ def compilable(tree: ast.Module) -> bool:
 
 def identifiers():
     return st.one_of(
-        st.just("a"),
-        st.just("b"),
+        st.just("__a"),
+        st.just("__b"),
     )
 
 
