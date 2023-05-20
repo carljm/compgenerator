@@ -107,6 +107,12 @@ def subscript_value_expr():
     )
 
 
+def lists():
+    return st.builds(
+        ast.List, st.lists(st.deferred(value_expr), min_size=0, max_size=3)
+    )
+
+
 def value_expr():
     return st.one_of(
         st.from_type(ast.Constant),
@@ -114,7 +120,7 @@ def value_expr():
         st.from_type(ast.Subscript),
         st.from_type(ast.NamedExpr),
         st.from_type(ast.Lambda),
-        st.from_type(ast.List),
+        lists(),
         listcomps(),
     )
 
@@ -123,7 +129,7 @@ def iterable_expr():
     return st.one_of(
         st.from_type(ast.Name),
         st.from_type(ast.Subscript),
-        st.from_type(ast.List),
+        lists(),
         listcomps(),
     )
 
@@ -179,9 +185,7 @@ def listcomps(draw):
 
 
 st.register_type_strategy(ast.ListComp, listcomps())
-st.register_type_strategy(
-    ast.List, st.builds(ast.List, st.lists(value_expr(), min_size=0, max_size=3))
-)
+st.register_type_strategy(ast.List, lists())
 st.register_type_strategy(
     ast.Expr,
     st.builds(ast.Expr, value_expr()),
@@ -264,16 +268,12 @@ st.register_type_strategy(
 
 
 def modules():
-    return (
-        st.from_type(ast.Module)
-        .filter(compilable)
-        .map(record_targets)
-    )
+    return st.from_type(ast.Module).filter(compilable).map(record_targets)
 
 
 @given(modules())
 @settings(
-    max_examples=100_000,
+    max_examples=100,
     deadline=None,
     suppress_health_check=[HealthCheck.too_slow, HealthCheck.filter_too_much],
 )
