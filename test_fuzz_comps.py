@@ -149,9 +149,9 @@ def value_expr():
 
 def iterable_expr():
     return st.one_of(
+        st.from_type(ast.Name),
         st.from_type(ast.List),
         st.from_type(ast.Tuple),
-        st.from_type(ast.Name),
         st.from_type(ast.Subscript),
         listcomps(),
     )
@@ -240,12 +240,12 @@ st.register_type_strategy(ast.Assign, assigns())
 
 def statements():
     return st.one_of(
+        st.from_type(ast.Name),
         st.from_type(ast.Assign),
         st.from_type(ast.Nonlocal),
         st.from_type(ast.Global),
         st.from_type(ast.Expr),
         st.from_type(ast.FunctionDef),
-        st.from_type(ast.Name),
         classes(),
     )
 
