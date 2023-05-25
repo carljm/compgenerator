@@ -7,7 +7,7 @@ from astor import to_source  # type: ignore
 import time
 
 import evalserver
-from hypothesis import given, settings, strategies as st, target, HealthCheck
+from hypothesis import event, given, settings, strategies as st, target, HealthCheck
 
 
 @pytest.fixture(scope="module")
@@ -44,13 +44,12 @@ def evalserver_client(request, logfile):
             proc.wait()
 
 
-def record_targets(tree: ast.Module) -> ast.Module:
-    nodes = list(ast.walk(tree))
+def record_targets(tree: ast.Module) -> str:
     num_lambdas = 0
     num_listcomps = 0
     num_classes = 0
     num_functions = 0
-    for n in nodes:
+    for n in ast.walk(tree):
         if isinstance(n, ast.Lambda):
             num_lambdas += 1
         elif isinstance(n, ast.ListComp):
@@ -70,15 +69,12 @@ def record_targets(tree: ast.Module) -> ast.Module:
     return to_source(tree)
 
 
-def has_listcomp(tree: ast.Module) -> bool:
-    return bool(any(isinstance(n, ast.ListComp) for n in ast.walk(tree)))
-
-
 def compilable(tree: ast.Module) -> bool:
     codestr = to_source(tree)
     try:
         compile(codestr, "<string>", "exec")
     except Exception:
+        event("not compilable")
         return False
     return True
 
@@ -94,28 +90,6 @@ st.register_type_strategy(ast.Name, st.builds(ast.Name, identifiers()))
 st.register_type_strategy(
     ast.Constant, st.builds(ast.Constant, st.integers(min_value=1, max_value=10))
 )
-st.register_type_strategy(
-    ast.List,
-    st.builds(
-        ast.List,
-        st.lists(
-            st.one_of(st.from_type(ast.Name), st.from_type(ast.Constant)),
-            min_size=0,
-            max_size=3,
-        ),
-    ),
-)
-st.register_type_strategy(
-    ast.Tuple,
-    st.builds(
-        ast.Tuple,
-        st.lists(
-            st.one_of(st.from_type(ast.Name), st.from_type(ast.Constant)),
-            min_size=0,
-            max_size=3,
-        ),
-    ),
-)
 
 
 def target_expr():
@@ -128,9 +102,14 @@ def target_expr():
 def subscript_value_expr():
     return st.one_of(
         st.from_type(ast.Name),
-        listcomps(),
-        st.from_type(ast.Lambda),
         st.from_type(ast.Subscript),
+        listcomps(),
+    )
+
+
+def lists():
+    return st.builds(
+        ast.List, st.lists(st.deferred(value_expr), min_size=0, max_size=3)
     )
 
 
@@ -138,21 +117,19 @@ def value_expr():
     return st.one_of(
         st.from_type(ast.Constant),
         st.from_type(ast.Name),
-        listcomps(),
-        st.from_type(ast.Lambda),
         st.from_type(ast.Subscript),
         st.from_type(ast.NamedExpr),
-        st.from_type(ast.List),
-        st.from_type(ast.Tuple),
+        st.from_type(ast.Lambda),
+        lists(),
+        listcomps(),
     )
 
 
 def iterable_expr():
     return st.one_of(
-        st.from_type(ast.List),
-        st.from_type(ast.Tuple),
         st.from_type(ast.Name),
         st.from_type(ast.Subscript),
+        lists(),
         listcomps(),
     )
 
@@ -181,7 +158,7 @@ st.register_type_strategy(ast.Subscript, subscripts())
 @st.composite
 def lambdas(draw):
     body = draw(value_expr())
-    arg_names = draw(st.sets(identifiers(), min_size=0, max_size=3))
+    arg_names = set(draw(st.lists(identifiers(), min_size=0, max_size=2)))
     args = ast.arguments(args=[ast.arg(name) for name in arg_names], defaults=[])
     return ast.Lambda(args, body)
 
@@ -208,23 +185,18 @@ def listcomps(draw):
 
 
 st.register_type_strategy(ast.ListComp, listcomps())
-st.register_type_strategy(
-    ast.List, st.builds(ast.List, st.lists(value_expr(), min_size=0, max_size=3))
-)
-st.register_type_strategy(
-    ast.Tuple, st.builds(ast.Tuple, st.lists(value_expr(), min_size=0, max_size=3))
-)
+st.register_type_strategy(ast.List, lists())
 st.register_type_strategy(
     ast.Expr,
     st.builds(ast.Expr, value_expr()),
 )
 st.register_type_strategy(
     ast.Global,
-    st.builds(ast.Global, st.lists(identifiers(), min_size=1, max_size=3)),
+    st.builds(ast.Global, st.sets(identifiers(), min_size=1, max_size=1)),
 )
 st.register_type_strategy(
     ast.Nonlocal,
-    st.builds(ast.Nonlocal, st.lists(identifiers(), min_size=1, max_size=3)),
+    st.builds(ast.Nonlocal, st.sets(identifiers(), min_size=1, max_size=1)),
 )
 
 
@@ -240,12 +212,19 @@ st.register_type_strategy(ast.Assign, assigns())
 
 def statements():
     return st.one_of(
-        st.from_type(ast.Assign),
-        st.from_type(ast.Nonlocal),
         st.from_type(ast.Global),
+        st.from_type(ast.Nonlocal),
+        st.from_type(ast.Assign),
         st.from_type(ast.Expr),
         st.from_type(ast.FunctionDef),
-        st.from_type(ast.Name),
+        classes(),
+    )
+
+def post_statements():
+    return st.one_of(
+        st.from_type(ast.Assign),
+        st.from_type(ast.Expr),
+        st.from_type(ast.FunctionDef),
         classes(),
     )
 
@@ -253,7 +232,10 @@ def statements():
 @st.composite
 def classes(draw):
     name = draw(identifiers())
-    stmts = draw(st.lists(statements(), min_size=1, max_size=10))
+    pre_stmts = draw(st.lists(statements(), min_size=0, max_size=3))
+    comps = draw(st.lists(st.builds(ast.Expr, listcomps()), min_size=1, max_size=3))
+    post_stmts = draw(st.lists(post_statements(), min_size=0, max_size=3))
+    stmts = pre_stmts + comps + post_stmts
     return ast.ClassDef(name, body=stmts, decorator_list=[], bases=[])
 
 
@@ -263,10 +245,17 @@ st.register_type_strategy(ast.ClassDef, classes())
 @st.composite
 def functions(draw):
     name = draw(identifiers())
-    arg_names = draw(st.sets(identifiers(), min_size=0, max_size=2))
+    arg_names = set(draw(st.lists(identifiers(), min_size=0, max_size=2)))
     args = ast.arguments(args=[ast.arg(name) for name in arg_names], defaults=[])
-    stmts = draw(st.lists(statements(), min_size=1, max_size=5))
-    stmts += [ast.Return(ast.Call(ast.Name("locals"), [], []))]
+    pre_stmts = draw(st.lists(statements(), min_size=0, max_size=3))
+    comps = draw(st.lists(st.builds(ast.Expr, listcomps()), min_size=1, max_size=3))
+    post_stmts = draw(st.lists(post_statements(), min_size=0, max_size=3))
+    stmts = (
+        pre_stmts
+        + comps
+        + post_stmts
+        + [ast.Return(ast.Call(ast.Name("locals"), [], []))]
+    )
     return ast.FunctionDef(name, args, stmts, [])
 
 
@@ -286,12 +275,7 @@ st.register_type_strategy(
 
 
 def modules():
-    return (
-        st.from_type(ast.Module)
-        .filter(has_listcomp)
-        .filter(compilable)
-        .map(record_targets)
-    )
+    return st.from_type(ast.Module).filter(compilable).map(record_targets)
 
 
 @given(modules())
