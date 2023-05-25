@@ -212,6 +212,16 @@ st.register_type_strategy(ast.Assign, assigns())
 
 def statements():
     return st.one_of(
+        st.from_type(ast.Global),
+        st.from_type(ast.Nonlocal),
+        st.from_type(ast.Assign),
+        st.from_type(ast.Expr),
+        st.from_type(ast.FunctionDef),
+        classes(),
+    )
+
+def post_statements():
+    return st.one_of(
         st.from_type(ast.Assign),
         st.from_type(ast.Expr),
         st.from_type(ast.FunctionDef),
@@ -222,11 +232,10 @@ def statements():
 @st.composite
 def classes(draw):
     name = draw(identifiers())
-    global_stmts = draw(st.lists(st.from_type(ast.Global), min_size=0, max_size=1))
     pre_stmts = draw(st.lists(statements(), min_size=0, max_size=3))
     comps = draw(st.lists(st.builds(ast.Expr, listcomps()), min_size=1, max_size=3))
-    post_stmts = draw(st.lists(statements(), min_size=0, max_size=3))
-    stmts = global_stmts + pre_stmts + comps + post_stmts
+    post_stmts = draw(st.lists(post_statements(), min_size=0, max_size=3))
+    stmts = pre_stmts + comps + post_stmts
     return ast.ClassDef(name, body=stmts, decorator_list=[], bases=[])
 
 
@@ -238,13 +247,11 @@ def functions(draw):
     name = draw(identifiers())
     arg_names = set(draw(st.lists(identifiers(), min_size=0, max_size=2)))
     args = ast.arguments(args=[ast.arg(name) for name in arg_names], defaults=[])
-    global_stmts = draw(st.lists(st.from_type(ast.Global), min_size=0, max_size=1))
     pre_stmts = draw(st.lists(statements(), min_size=0, max_size=3))
     comps = draw(st.lists(st.builds(ast.Expr, listcomps()), min_size=1, max_size=3))
-    post_stmts = draw(st.lists(statements(), min_size=0, max_size=3))
+    post_stmts = draw(st.lists(post_statements(), min_size=0, max_size=3))
     stmts = (
-        global_stmts
-        + pre_stmts
+        pre_stmts
         + comps
         + post_stmts
         + [ast.Return(ast.Call(ast.Name("locals"), [], []))]
@@ -273,7 +280,7 @@ def modules():
 
 @given(modules())
 @settings(
-    max_examples=100,
+    max_examples=100_000,
     deadline=None,
     suppress_health_check=[HealthCheck.too_slow, HealthCheck.filter_too_much],
 )
